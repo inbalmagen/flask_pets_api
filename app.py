@@ -1,96 +1,136 @@
 from flask import Flask, jsonify, request
+import psycopg2
 
 app = Flask(__name__)
 
-# Sample data for pets
-pets = [
-    {
-        "id": 1,
-        "name": "Bella",
-        "age": 3,
-        "url": "https://thumbor.forbes.com/thumbor/fit-in/900x510/https://www.forbes.com/advisor/wp-content/uploads/2023/07/top-20-small-dog-breeds.jpeg.jpg"
-    },
-    {
-        "id": 2,
-        "name": "Charlie",
-        "age": 4,
-        "url": "https://www.thesprucepets.com/thmb/hxWjs7evF2hP1Fb1c1HAvRi_Rw0=/2765x0/filters:no_upscale():strip_icc()/chinese-dog-breeds-4797219-hero-2a1e9c5ed2c54d00aef75b05c5db399c.jpg"
-    },
-    {
-        "id": 3,
-        "name": "Max",
-        "age": 2,
-        "url": "https://s3.amazonaws.com/cdn-origin-etr.akc.org/wp-content/uploads/2017/11/02151216/Afghan-Hound-standing-in-a-garden-400x267.jpg"
-    },
-    {
-        "id": 4,
-        "name": "Luna",
-        "age": 5,
-        "url": "https://media-cldnry.s-nbcnews.com/image/upload/t_nbcnews-fp-1200-630,f_auto,q_auto:best/rockcms/2022-08/220805-border-collie-play-mn-1100-82d2f1.jpg"
-    }
-]
+# Database connection settings
+DB_HOST = 'dpg-cr4vmr52ng1s73e8j78g-a.frankfurt-postgres.render.com'
+DB_NAME = 'db_pets_k5jh'
+DB_USER = 'db_pets_k5jh_user'
+DB_PASS = 'EkjGLCXC10SpVN9WjQLx2iaV3NaFoucl'
+DB_PORT = '5432'  # Default PostgreSQL port
 
-# Define a route for the root URL
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS,
+        port=DB_PORT
+    )
+    return conn
+
 @app.route('/')
 def root():
     return "Welcome to the Pet Shop API!"
 
 @app.route('/pets')
 def pets_list():
-    return jsonify(pets)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM pets;')
+    pets = cur.fetchall()
+    cur.close()
+    conn.close()
 
-@app.route('/<int:id>')
+    return jsonify([{
+        'id': pet[0],
+        'name': pet[1],
+        'age': pet[2],
+        'url': pet[3]
+    } for pet in pets])
+
+@app.route('/pets/<int:id>')
 def pet_detail(id):
-    # Find the pet by id
-    pet = next((pet for pet in pets if pet['id'] == id), None)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM pets WHERE id = %s;', (id,))
+    pet = cur.fetchone()
+    cur.close()
+    conn.close()
+
     if pet:
-        return jsonify(pet)
+        return jsonify({
+            'id': pet[0],
+            'name': pet[1],
+            'age': pet[2],
+            'url': pet[3]
+        })
     else:
         return jsonify({"error": "Pet not found"}), 404
 
 @app.route('/pets', methods=['POST'])
 def add_pet():
-    # Get the request data
     data = request.get_json()
 
-    # Check if required fields are present
     if not all(k in data for k in ("id", "name", "age", "url")):
         return jsonify({"error": "Missing data"}), 400
 
-    # Check if pet with the same id already exists
-    if any(pet['id'] == data['id'] for pet in pets):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute('SELECT * FROM pets WHERE id = %s;', (data['id'],))
+    existing_pet = cur.fetchone()
+
+    if existing_pet:
+        cur.close()
+        conn.close()
         return jsonify({"error": "Pet with this ID already exists"}), 400
 
-    # Add the new pet to the list
-    pets.append(data)
+    cur.execute(
+        'INSERT INTO pets (id, name, age, url) VALUES (%s, %s, %s, %s);',
+        (data['id'], data['name'], data['age'], data['url'])
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
     return jsonify(data), 201
 
 @app.route('/pets/<int:id>', methods=['DELETE'])
 def delete_pet(id):
-    global pets
-    # Find the pet by id
-    pet = next((pet for pet in pets if pet['id'] == id), None)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM pets WHERE id = %s;', (id,))
+    pet = cur.fetchone()
+
     if pet:
-        # Remove the pet from the list
-        pets = [pet for pet in pets if pet['id'] != id]
+        cur.execute('DELETE FROM pets WHERE id = %s;', (id,))
+        conn.commit()
+        cur.close()
+        conn.close()
         return jsonify({"message": "Pet deleted successfully"}), 200
     else:
+        cur.close()
+        conn.close()
         return jsonify({"error": "Pet not found"}), 404
 
 @app.route('/pets/<int:id>/', methods=['PUT'])
 def edit_pet(id):
-    # Get the request data
     data = request.get_json()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM pets WHERE id = %s;', (id,))
+    pet = cur.fetchone()
 
-    # Find the pet by id
-    pet = next((pet for pet in pets if pet['id'] == id), None)
     if pet:
-        # Update pet details
-        pet.update(data)
-        return jsonify(pet), 200
+        cur.execute(
+            'UPDATE pets SET name = %s, age = %s, url = %s WHERE id = %s;',
+            (data.get('name', pet[1]), data.get('age', pet[2]), data.get('url', pet[3]), id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({
+            'id': id,
+            'name': data.get('name', pet[1]),
+            'age': data.get('age', pet[2]),
+            'url': data.get('url', pet[3])
+        }), 200
     else:
+        cur.close()
+        conn.close()
         return jsonify({"error": "Pet not found"}), 404
-
 
 if __name__ == '__main__':
     app.run(debug=True)
