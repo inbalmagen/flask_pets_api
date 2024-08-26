@@ -8,7 +8,8 @@ DB_HOST = 'dpg-cr4vmr52ng1s73e8j78g-a.frankfurt-postgres.render.com'
 DB_NAME = 'db_pets_k5jh'
 DB_USER = 'db_pets_k5jh_user'
 DB_PASS = 'EkjGLCXC10SpVN9WjQLx2iaV3NaFoucl'
-DB_PORT = '5432'  # Default PostgreSQL port
+DB_PORT = '5432' 
+
 
 def get_db_connection():
     conn = psycopg2.connect(
@@ -63,29 +64,35 @@ def pet_detail(id):
 def add_pet():
     data = request.get_json()
 
-    if not all(k in data for k in ("id", "name", "age", "url")):
+    # Check if required fields are present
+    if not all(k in data for k in ("name", "age", "url")):
         return jsonify({"error": "Missing data"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute('SELECT * FROM pets WHERE id = %s;', (data['id'],))
-    existing_pet = cur.fetchone()
+    # Get the current maximum id in the pets table
+    cur.execute('SELECT COALESCE(MAX(id), 0) FROM pets;')
+    max_id = cur.fetchone()[0]
+    new_id = max_id + 1  # Calculate the next id
 
-    if existing_pet:
-        cur.close()
-        conn.close()
-        return jsonify({"error": "Pet with this ID already exists"}), 400
-
+    # Insert new pet data with the calculated id
     cur.execute(
         'INSERT INTO pets (id, name, age, url) VALUES (%s, %s, %s, %s);',
-        (data['id'], data['name'], data['age'], data['url'])
+        (new_id, data['name'], data['age'], data['url'])
     )
     conn.commit()
     cur.close()
     conn.close()
 
-    return jsonify(data), 201
+    # Return the inserted data along with the new ID
+    return jsonify({
+        "id": new_id,
+        "name": data['name'],
+        "age": data['age'],
+        "url": data['url']
+    }), 201
+
 
 @app.route('/pets/<int:id>', methods=['DELETE'])
 def delete_pet(id):
@@ -131,6 +138,30 @@ def edit_pet(id):
         cur.close()
         conn.close()
         return jsonify({"error": "Pet not found"}), 404
+
+@app.route('/pets/search/<name_query>', methods=['GET'])
+def search_pet(name_query):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Perform a case-sensitive search
+    cur.execute("SELECT * FROM pets WHERE name LIKE %s;", (f"%{name_query}%",))
+    pets = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    if pets:
+        return jsonify([{
+            'id': pet[0],
+            'name': pet[1],
+            'age': pet[2],
+            'url': pet[3]
+        } for pet in pets])
+    else:
+        return jsonify({"message": "No pets found matching the search criteria"}), 404
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
