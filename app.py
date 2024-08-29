@@ -3,8 +3,14 @@ from flask_cors import CORS
 import psycopg2
 
 app = Flask(__name__)
-# Initialize CORS
-# CORS(app, resources={r"/*": {"origins": ["http://127.0.0.1:5500","https://petshop-front-1bmj.onrender.com"]}})
+
+# Initialize CORS with specific origins
+CORS(app, resources={
+    r"/pets/*": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
+    r"/pets": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
+    r"/pets/<int:id>": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
+    r"/pets/<int:id>/": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]}
+})
 
 # Database connection settings
 DB_HOST = 'dpg-cr4vmr52ng1s73e8j78g-a.frankfurt-postgres.render.com'
