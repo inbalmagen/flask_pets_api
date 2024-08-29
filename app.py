@@ -4,12 +4,9 @@ import psycopg2
 
 app = Flask(__name__)
 
-# Initialize CORS with specific origins
+# Initialize CORS 
 CORS(app, resources={
-    r"/pets/*": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
-    r"/pets": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
-    r"/pets/<int:id>": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]},
-    r"/pets/<int:id>/": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]}
+    r"/pets/*": {"origins": ["http://127.0.0.1:5500", "https://petshop-front-jxqs.onrender.com"]}
 })
 
 # Database connection settings
@@ -152,14 +149,14 @@ def edit_pet(id):
 def search_pet(name_query):
     conn = get_db_connection()
     cur = conn.cursor()
-    
-    # Perform a case-sensitive search
-    cur.execute("SELECT * FROM pets WHERE name LIKE %s;", (f"%{name_query}%",))
+
+    # Perform a case-sensitive search using COLLATE
+    cur.execute("SELECT * FROM pets WHERE name LIKE %s COLLATE \"C\";", (f"%{name_query}%",))
     pets = cur.fetchall()
-    
+
     cur.close()
     conn.close()
-    
+
     if pets:
         return jsonify([{
             'id': pet[0],
